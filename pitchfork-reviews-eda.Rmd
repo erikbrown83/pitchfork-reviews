@@ -1,0 +1,58 @@
+---
+title: "pitchfork-reviews"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+library(tidyverse)
+library(RSQLite)
+library(odbc)
+library(glue)
+
+tb#define file path to database
+rawPath <- "./rawData/"
+
+#define connection to local database
+con <- dbConnect(RSQLite::SQLite(), paste0(rawPath, "database.sqlite"))
+
+#db consists of 6 tables: artists, content, genre, labels, reviews, and years
+#they all share a common key: reviewid
+dbListTables(con) %>% map(~dbListFields(conn = con, .x))
+
+dbListTables(con) %>% map(~tbl(con, .x) %>% head)
+
+#let's try and mash it all together - except the content
+dbGetQuery(conn = con,
+           "select a.*, b.artist
+           from reviews as a
+           left join artists as b
+           on a.reviewid = b.reviewid
+           ")
+
+pitchfork_reviews <- tbl_df(tbl(con, "reviews") %>%
+                        left_join(tbl(con, "genres"), by = c("reviewid")) %>%
+                        left_join(tbl(con, "labels"), by = c("reviewid")) %>%
+                        #left_join(tbl(con, "years"), by = c("reviewid")) %>% we drop the years join because this is linked to the difference between review date and the date the album was published - who cares?
+                        left_join(tbl(con, "content"), by = c("reviewid"))) %>%
+                        distinct()
+
+#we find that we get duplicates related to multiple genres + record labels
+#so we use glue collapse to combine them all
+genres <- pitchfork_reviews %>% distinct(reviewid, genre) %>%
+                      group_by(reviewid) %>%
+                      summarise(genre = glue_collapse(genre, sep = " ; ")) %>%
+                      ungroup()
+
+labels <- pitchfork_reviews %>% distinct(reviewid, label) %>%
+                      group_by(reviewid) %>%
+                      summarise(label = glue_collapse(label, "  ; ")) %>%
+                      ungroup()
+
+#and recombine with the rest of the data
+clean_pitchfork_reviews <- pitchfork_reviews %>% select(-genre, -label) %>% 
+                           distinct() %>%
+                           left_join(genres, by = c("reviewid")) %>%
+                           left_join(labels, by = c("reviewid"))
+
+```
