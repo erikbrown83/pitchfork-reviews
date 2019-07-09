@@ -10,7 +10,9 @@ library(RSQLite)
 library(odbc)
 library(glue)
 
-tb#define file path to database
+theme_set(theme_bw())
+
+#define file path to database
 rawPath <- "./rawData/"
 
 #define connection to local database
@@ -56,3 +58,50 @@ clean_pitchfork_reviews <- pitchfork_reviews %>% select(-genre, -label) %>%
                            left_join(labels, by = c("reviewid"))
 
 ```
+
+
+```{r}
+#eda
+
+#reviews over time
+clean_pitchfork_reviews %>% count(pub_year) %>%
+                            ggplot(aes(x = pub_year, y = n)) +
+                            geom_line()
+
+#top 25 artists by number of reviews - excludes various artists
+clean_pitchfork_reviews %>% filter(artist != "various artists") %>%
+                            count(artist, sort = T) %>%
+                            head(25) %>%
+                            mutate(artist = str_to_title(artist),
+                                   artist = fct_reorder(artist, n)) %>%
+                            ggplot(aes(x = artist, y = n)) +
+                            geom_col(aes(fill = artist), show.legend = FALSE) + 
+                            coord_flip() +
+                            labs(x = "",
+                                 y = "Number of reviews",
+                              title = "Which artists have the most reviews on Pitchfork?",
+                                 subtitle = "Excludes 'Various Artists'")
+
+#what are the average review scores by genre?
+#normally distributed so we stick to the mean
+clean_pitchfork_reviews %>% group_by(genre) %>%
+                            summarise(numReviews = n(),
+                                      meanScore = mean(score),
+                                      sdScore = sd(score)) %>%
+                            arrange(desc(numReviews)) %>% 
+                            head(16) %>%
+                            mutate(genre = replace_na(genre, "No genre listed"),
+                                   genre = fct_reorder(genre, meanScore)) %>%
+                            ggplot(aes(x = genre, y = meanScore)) +
+                            geom_point() +
+                            geom_errorbar(aes(ymin = meanScore - sdScore,
+                                              ymax = meanScore + sdScore)) +
+                            coord_flip() +
+                            labs(x = "",
+                                 y = "Mean Review Score",
+                      title = "Which genre had the highest average score on Pitchfork?")
+
+
+
+```
+
